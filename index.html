@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Tarot Reading</title>
+    <style>
+        :root{--bg:#fff;--fg:#111;--card-bg:#f5f5f5}
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:var(--bg);color:var(--fg);font-family:system-ui;transition:.3s;perspective:1000px;padding:20px}
+        body.dark{--bg:#1a1a1a;--fg:#e0e0e0;--card-bg:#2a2a2a}
+        
+        .container{max-width:1200px;margin:0 auto}
+        h1{text-align:center;margin:20px 0;font-size:2rem}
+        
+        .spread{display:grid;gap:20px;margin:40px 0}
+        .spread.single-card{grid-template-columns:1fr;max-width:200px;margin:40px auto}
+        .spread.three-card{grid-template-columns:repeat(3,1fr)}
+        .spread.five-card{grid-template-columns:repeat(5,1fr)}
+        .spread.seven-card{grid-template-columns:repeat(4,1fr)}
+        .spread.celtic-cross{
+            grid-template-areas:
+                ". above . ."
+                "past cross future outcome"
+                ". below . ."
+                "advice external hopes .";
+            grid-template-columns:repeat(4,1fr);
+        }
+        
+        .card{
+            position:relative;
+            aspect-ratio:600/1000;
+            transform-style:preserve-3d;
+            transition:transform .6s;
+            cursor:pointer;
+            border-radius:8px;
+            background:var(--card-bg);
+        }
+        
+        .card>.front,.card>.back{
+            position:absolute;
+            width:100%;
+            height:100%;
+            backface-visibility:hidden;
+            border-radius:8px;
+            box-shadow:0 4px 12px rgba(0,0,0,.2);
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            flex-direction:column;
+        }
+        
+        .card>.front img{
+            width:100%;
+            height:100%;
+            object-fit:cover;
+            border-radius:8px;
+        }
+        
+        .card>.back{
+            transform:rotateY(180deg);
+            background:linear-gradient(135deg,#667eea,#764ba2);
+        }
+        
+        .card>.back img{
+            width:100%;
+            height:100%;
+            object-fit:cover;
+            border-radius:8px;
+        }
+        
+        .card .back.reversed > img{transform:rotate(180deg)}
+        
+        .card.flipped{transform:rotateY(180deg)}
+        .card:hover{transform:translateY(-5px);box-shadow:0 8px 20px rgba(0,0,0,.3)}
+        .card.flipped:hover{transform:rotateY(180deg) translateY(-5px)}
+        
+        .card-info{
+            position:absolute;
+            bottom:10px;
+            left:50%;
+            transform:translateX(-50%);
+            z-index:10;
+            pointer-events:none;
+        }
+        
+        .card-label{
+            background:rgba(0,0,0,0.7);
+            color:white;
+            padding:4px 8px;
+            border-radius:4px;
+            font-size:12px;
+            display:inline-block;
+        }
+        
+        .reversed-badge{
+            position:absolute;
+            top:10px;
+            right:10px;
+            background:rgba(139,69,19,0.9);
+            color:white;
+            padding:2px 6px;
+            border-radius:4px;
+            font-size:11px;
+            font-weight:bold;
+            z-index:10;
+            pointer-events:none;
+        }
+        
+        /* Celtic Cross positions */
+        .card.pos-cross{grid-area:cross}
+        .card.pos-above{grid-area:above}
+        .card.pos-below{grid-area:below}
+        .card.pos-past{grid-area:past}
+        .card.pos-future{grid-area:future}
+        .card.pos-advice{grid-area:advice}
+        .card.pos-external{grid-area:external}
+        .card.pos-hopes{grid-area:hopes}
+        .card.pos-outcome{grid-area:outcome}
+        
+        #ui{position:fixed;top:10px;right:10px;display:flex;gap:8px;z-index:100}
+        #ui button{
+            padding:8px 12px;
+            border:1px solid rgba(128,128,128,.3);
+            border-radius:6px;
+            background:rgba(255,255,255,.9);
+            cursor:pointer;
+            font-size:16px;
+            transition:.2s;
+        }
+        body.dark #ui button{background:rgba(50,50,50,.9);color:#e0e0e0}
+        #ui button:hover{transform:scale(1.05)}
+        
+        .settings{
+            background:var(--card-bg);
+            padding:20px;
+            border-radius:8px;
+            margin:20px 0;
+        }
+        
+        .settings-row{
+            display:flex;
+            gap:10px;
+            align-items:center;
+            margin:10px 0;
+            flex-wrap:wrap;
+        }
+        
+        .settings label{display:flex;align-items:center;gap:5px}
+        
+        .question-box{
+            text-align:center;
+            margin:20px 0;
+        }
+        
+        input,select{
+            padding:10px 15px;
+            border:1px solid rgba(128,128,128,.3);
+            border-radius:6px;
+            background:var(--card-bg);
+            color:var(--fg);
+        }
+        
+        input[type="text"]{width:400px;max-width:90%}
+        input[type="password"]{width:300px}
+        
+        .btn-shuffle{
+            padding:10px 20px;
+            margin:10px;
+            border:none;
+            border-radius:6px;
+            background:linear-gradient(135deg,#667eea,#764ba2);
+            color:white;
+            cursor:pointer;
+            font-size:16px;
+            transition:.2s;
+        }
+        
+        .btn-shuffle:hover{transform:scale(1.05)}
+        .btn-shuffle:disabled{opacity:0.5;cursor:not-allowed}
+        
+        #reading{
+            text-align:left;
+            padding:20px;
+            margin:20px auto;
+            max-width:800px;
+            background:var(--card-bg);
+            border-radius:8px;
+            min-height:100px;
+            white-space:pre-wrap;
+            line-height:1.6;
+        }
+        
+        @media (prefers-reduced-motion: reduce) {
+            .spinner, .card, * {
+                animation: none !important;
+                transition: none !important;
+            }
+        }
+        
+        #history{
+            list-style:none;
+            padding:20px;
+            max-width:800px;
+            margin:20px auto;
+        }
+        
+        #history li{
+            padding:10px;
+            margin:5px 0;
+            background:var(--card-bg);
+            border-radius:6px;
+            font-size:14px;
+        }
+        
+        .moon{
+            position:fixed;
+            top:10px;
+            left:10px;
+            font-size:24px;
+        }
+        
+        .card-tooltip{
+            position:absolute;
+            background:rgba(0,0,0,0.9);
+            color:white;
+            padding:8px 12px;
+            border-radius:6px;
+            font-size:14px;
+            z-index:1000;
+            pointer-events:none;
+            opacity:0;
+            transition:opacity 0.3s;
+            max-width:250px;
+            bottom:calc(100% + 10px);
+            left:50%;
+            transform:translateX(-50%);
+            white-space:normal;
+        }
+        
+        .card:hover .card-tooltip{opacity:1}
+        
+        .info{
+            background:rgba(102,126,234,0.1);
+            border-left:4px solid #667eea;
+            padding:10px;
+            margin:10px 0;
+            border-radius:4px;
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(102,126,234,0.2);
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            margin-left: 8px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            display: inline-flex;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="moon" id="moon"></div>
+    <div id="ui">
+        <button id="themeBtn" title="Toggle dark mode">🌙</button>
+        <button id="saveBtn" title="Save reading">💾</button>
+        <button id="historyBtn" title="Show history">📜</button>
+        <button id="settingsBtn" title="API Settings">⚙️</button>
+    </div>
+    
+    <div class="container">
+        <h1>🔮 LLM Tarot Reading 🔮</h1>
+        
+        <div class="settings" id="settings" style="display:none">
+            <h3>API Settings</h3>
+            <div class="settings-row">
+                <label>Provider:
+                    <select id="provider">
+                        <option value="none">None (Offline)</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="openrouter">OpenRouter</option>
+                        <option value="ollama">Ollama (Local)</option>
+                    </select>
+                </label>
+                <label>Model:
+                    <input type="text" id="model" placeholder="gpt-4o-mini">
+                </label>
+                <label>API Key:
+                    <input type="password" id="apikey" placeholder="sk-...">
+                </label>
+                <button onclick="saveAPISettings()">Save Settings</button>
+            </div>
+            <div class="info">
+                <small>
+                    • OpenAI: Use your API key from platform.openai.com<br>
+                    • OpenRouter: Use key from openrouter.ai<br>
+                    • Ollama: Run locally, no key needed<br>
+                    • Keys stored locally in browser only
+                </small>
+            </div>
+        </div>
+        
+        <div class="question-box">
+            <input type="text" id="question" placeholder="What does the future hold? (AI selects best spread for your question)">
+            <button class="btn-shuffle" id="shuffleBtn" onclick="shuffleCards()">🎴 Ask the Cards</button>
+        </div>
+        
+        <div class="spread" id="spread"></div>
+        
+        <div id="reading" role="log" aria-live="polite"></div>
+        
+        <ul id="history" style="display:none"></ul>
+    </div>
+    
+    <script>
+        // Card meanings for hover
+        const CARD_MEANINGS = {
+            // Major Arcana
+            'The Fool': {u: 'New beginnings, innocence, spontaneity', r: 'Recklessness, risk-taking, foolishness'},
+            'The Magician': {u: 'Manifestation, resourcefulness, power', r: 'Manipulation, poor planning, untapped talents'},
+            'The High Priestess': {u: 'Intuition, sacred knowledge, divine feminine', r: 'Secrets, disconnected from intuition, withdrawal'},
+            'The Empress': {u: 'Femininity, beauty, nature, abundance', r: 'Creative block, dependence on others'},
+            'The Emperor': {u: 'Authority, structure, control, father figure', r: 'Tyranny, rigidity, coldness'},
+            'The Hierophant': {u: 'Tradition, conformity, morality, ethics', r: 'Rebellion, subversiveness, new approaches'},
+            'The Lovers': {u: 'Love, harmony, relationships, values', r: 'Disharmony, imbalance, misalignment'},
+            'The Chariot': {u: 'Control, willpower, success, determination', r: 'Lack of control, lack of direction, aggression'},
+            'Strength': {u: 'Inner strength, courage, patience, control', r: 'Self doubt, weakness, insecurity'},
+            'The Hermit': {u: 'Soul searching, introspection, inner guidance', r: 'Isolation, loneliness, withdrawal'},
+            'Wheel of Fortune': {u: 'Good luck, karma, life cycles, destiny', r: 'Bad luck, lack of control, clinging to control'},
+            'Justice': {u: 'Justice, fairness, truth, cause and effect', r: 'Unfairness, lack of accountability, dishonesty'},
+            'The Hanged Man': {u: 'Suspension, restriction, letting go', r: 'Martyrdom, indecision, delay'},
+            'Death': {u: 'Endings, transformation, transition', r: 'Resistance to change, unable to move on'},
+            'Temperance': {u: 'Balance, moderation, patience, purpose', r: 'Imbalance, excess, lack of long-term vision'},
+            'The Devil': {u: 'Bondage, addiction, sexuality, materialism', r: 'Detachment, breaking free, power reclaimed'},
+            'The Tower': {u: 'Sudden change, upheaval, chaos, revelation', r: 'Personal transformation, fear of change'},
+            'The Star': {u: 'Hope, faith, purpose, renewal, spirituality', r: 'Lack of faith, despair, self-trust issues'},
+            'The Moon': {u: 'Illusion, fear, anxiety, intuition, dreams', r: 'Release of fear, repressed emotion, clarity'},
+            'The Sun': {u: 'Joy, success, celebration, positivity', r: 'Inner child, feeling down, overly optimistic'},
+            'Judgement': {u: 'Reflection, reckoning, inner calling', r: 'Self doubt, inability to forgive, harsh judgment'},
+            'The World': {u: 'Completion, accomplishment, travel, unity', r: 'Incomplete, no closure, seeking closure'}
+        };
+        
+        // Generic meanings for Minor Arcana
+        const SUIT_MEANINGS = {
+            Wands: 'Creativity, action, inspiration',
+            Cups: 'Emotions, relationships, intuition',
+            Swords: 'Thoughts, communication, conflict',
+            Pentacles: 'Material, career, manifestation'
+        };
+        
+        // Card data
+        const majorArcana = [
+            {id: 0, name: "The Fool", img: "images/00_the_fool.png"},
+            {id: 1, name: "The Magician", img: "images/01_the_magician.png"},
+            {id: 2, name: "The High Priestess", img: "images/02_the_high_priestess.png"},
+            {id: 3, name: "The Empress", img: "images/03_the_empress.png"},
+            {id: 4, name: "The Emperor", img: "images/04_the_emperor.png"},
+            {id: 5, name: "The Hierophant", img: "images/05_the_hierophant.png"},
+            {id: 6, name: "The Lovers", img: "images/06_the_lovers.png"},
+            {id: 7, name: "The Chariot", img: "images/07_the_chariot.png"},
+            {id: 8, name: "Strength", img: "images/08_strength.png"},
+            {id: 9, name: "The Hermit", img: "images/09_the_hermit.png"},
+            {id: 10, name: "Wheel of Fortune", img: "images/10_wheel_of_fortune.png"},
+            {id: 11, name: "Justice", img: "images/11_justice.png"},
+            {id: 12, name: "The Hanged Man", img: "images/12_the_hanged_man.png"},
+            {id: 13, name: "Death", img: "images/13_death.png"},
+            {id: 14, name: "Temperance", img: "images/14_temperance.png"},
+            {id: 15, name: "The Devil", img: "images/15_the_devil.png"},
+            {id: 16, name: "The Tower", img: "images/16_the_tower.png"},
+            {id: 17, name: "The Star", img: "images/17_the_star.png"},
+            {id: 18, name: "The Moon", img: "images/18_the_moon.png"},
+            {id: 19, name: "The Sun", img: "images/19_the_sun.png"},
+            {id: 20, name: "Judgement", img: "images/20_judgement.png"},
+            {id: 21, name: "The World", img: "images/21_the_world.png"}
+        ];
+        
+        const suits = ["wands", "cups", "swords", "pentacles"];
+        
+        const minorArcana = [];
+        suits.forEach(function(suit) {
+            // Ace
+            minorArcana.push({
+                name: 'Ace of ' + suit.charAt(0).toUpperCase() + suit.slice(1),
+                img: 'images/' + suit + '_01_ace.png'
+            });
+            
+            // Numbers 2-10
+            for (let i = 2; i <= 10; i++) {
+                const names = ["", "", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
+                minorArcana.push({
+                    name: names[i] + ' of ' + suit.charAt(0).toUpperCase() + suit.slice(1),
+                    img: 'images/' + suit + '_' + (i < 10 ? '0' + i : i) + '.png'
+                });
+            }
+            
+            // Court cards
+            const courtCards = [
+                {name: "Page", file: "11_page"},
+                {name: "Knight", file: "12_knight"},
+                {name: "Queen", file: "13_queen"},
+                {name: "King", file: "14_king"}
+            ];
+            
+            courtCards.forEach(function(card) {
+                minorArcana.push({
+                    name: card.name + ' of ' + suit.charAt(0).toUpperCase() + suit.slice(1),
+                    img: 'images/' + suit + '_' + card.file + '.png'
+                });
+            });
+        });
+        
+        const allCards = majorArcana.concat(minorArcana);
+        const cardBack = "images/card_back.png";
+        
+        // Crypto-secure shuffling
+        function cryptoRandomInt(max) {
+            const array = new Uint32Array(1);
+            window.crypto.getRandomValues(array);
+            return array[0] % max;
+        }
+        
+        function cryptoShuffle(array) {
+            const shuffled = array.slice();
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = cryptoRandomInt(i + 1);
+                const temp = shuffled[i];
+                shuffled[i] = shuffled[j];
+                shuffled[j] = temp;
+            }
+            return shuffled;
+        }
+        
+        // Available spread types
+        const SPREADS = {
+            'Single Card': {
+                name: 'Single Card',
+                size: 1,
+                positions: [{name: 'Answer'}],
+                description: 'Quick insight or daily guidance'
+            },
+            'Three Card': {
+                name: 'Three Card',
+                size: 3,
+                positions: [
+                    {name: 'Past'},
+                    {name: 'Present'},
+                    {name: 'Future'}
+                ],
+                description: 'Timeline perspective'
+            },
+            'Five Card': {
+                name: 'Five Card',
+                size: 5,
+                positions: [
+                    {name: 'Present Situation'},
+                    {name: 'Influences'},
+                    {name: 'Challenges'},
+                    {name: 'Advice'},
+                    {name: 'Potential Outcome'}
+                ],
+                description: 'Detailed situation analysis'
+            },
+            'Seven Card': {
+                name: 'Seven Card',
+                size: 7,
+                positions: [
+                    {name: 'Past'},
+                    {name: 'Present'},
+                    {name: 'Hidden Influences'},
+                    {name: 'Advice'},
+                    {name: 'External Influences'},
+                    {name: 'Hopes & Fears'},
+                    {name: 'Outcome'}
+                ],
+                description: 'Comprehensive reading'
+            },
+            'Celtic Cross': {
+                name: 'Celtic Cross',
+                size: 10,
+                positions: [
+                    {name: 'Present Situation', class: 'pos-cross'},
+                    {name: 'Challenge/Cross', class: 'pos-cross'},
+                    {name: 'Distant Past', class: 'pos-past'},
+                    {name: 'Recent Past', class: 'pos-past'},
+                    {name: 'Possible Outcome', class: 'pos-future'},
+                    {name: 'Immediate Future', class: 'pos-future'},
+                    {name: 'Your Approach', class: 'pos-advice'},
+                    {name: 'External Influences', class: 'pos-external'},
+                    {name: 'Hopes & Fears', class: 'pos-hopes'},
+                    {name: 'Final Outcome', class: 'pos-outcome'}
+                ],
+                description: 'Most comprehensive for complex situations'
+            }
+        };
+        
+        // Fallback pattern-based spread selection
+        function chooseSpreadFallback(question) {
+            const text = (question || '').toLowerCase();
+            const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+            
+            // Single card for yes/no or very simple questions
+            if (/(yes|no|will|is it|should i just|daily|today)/i.test(text) && wordCount < 6) {
+                return SPREADS['Single Card'];
+            }
+            
+            // Five card for moderate complexity
+            if (/(advice|guidance|help|situation|problem)/i.test(text) && wordCount < 12) {
+                return SPREADS['Five Card'];
+            }
+            
+            // Seven card for deeper analysis
+            if (/(analyze|understand|explore|investigate)/i.test(text) || wordCount > 12) {
+                return SPREADS['Seven Card'];
+            }
+            
+            // Celtic Cross for complex life questions
+            if (/(relationship|career|path|decision|future|life)/i.test(text) && wordCount > 8) {
+                return SPREADS['Celtic Cross'];
+            }
+            
+            // Default to Three Card
+            return SPREADS['Three Card'];
+        }
+        
+        // LLM-based spread selection
+        async function getIntelligentSpread(question) {
+            const settings = loadAPISettings();
+            
+            // If no API configured, use fallback
+            if (!settings.provider || settings.provider === 'none') {
+                return chooseSpreadFallback(question);
+            }
+            
+            // For Ollama, no API key needed; for others, check key
+            if (settings.provider !== 'ollama' && !settings.apikey) {
+                console.log('No API key, using fallback spread selection');
+                return chooseSpreadFallback(question);
+            }
+            
+            try {
+                const spreadPrompt = 'Select ONE tarot spread for: "' + question + '"\n\nMATCH FIRST RULE THAT APPLIES:\n\n1. Contains "past present future" or "timeline" → Three Card\n2. Starts with "will I" or "should I" or "is it" or contains "yes or no" → Single Card  \n3. Contains "daily" or "today" or "this week" → Single Card\n4. Contains "quit job" or "career change" or "move country" or "marriage" or "divorce" → Celtic Cross\n5. Contains "life purpose" or "year ahead" or "general reading" → Celtic Cross\n6. Contains "advice" or "what should I do" or "how can I" or "next steps" → Five Card\n7. Contains "hidden" or "influences" or "what am I not seeing" → Seven Card\n8. DEFAULT if no match → Three Card\n\nRespond with ONLY: Single Card OR Three Card OR Five Card OR Seven Card OR Celtic Cross';
+                
+                const controller = new AbortController();
+                const timeout = setTimeout(function() { controller.abort(); }, 8000); // 8s timeout
+                
+                let endpoint, headers, body;
+                
+                if (settings.provider === 'ollama') {
+                    endpoint = (settings.endpoint || 'http://localhost:11434') + '/api/generate';
+                    headers = {'Content-Type': 'application/json'};
+                    body = JSON.stringify({
+                        model: settings.model || 'llama3.2',
+                        prompt: spreadPrompt,
+                        stream: false,
+                        options: {temperature: 0.3, max_tokens: 20}
+                    });
+                } else {
+                    endpoint = settings.provider === 'openrouter' 
+                        ? 'https://openrouter.ai/api/v1/chat/completions'
+                        : 'https://api.openai.com/v1/chat/completions';
+                    headers = {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + settings.apikey
+                    };
+                    if (settings.provider === 'openrouter') {
+                        headers['HTTP-Referer'] = window.location.href;
+                    }
+                    body = JSON.stringify({
+                        model: settings.model || 'gpt-4o-mini',
+                        messages: [{role: 'user', content: spreadPrompt}],
+                        temperature: 0.3,
+                        max_tokens: 20,
+                        stream: false
+                    });
+                }
+                
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers,
+                    body,
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeout);
+                
+                if (!response.ok) {
+                    throw new Error('API error: ' + response.status);
+                }
+                
+                const data = await response.json();
+                let spreadName;
+                
+                if (settings.provider === 'ollama') {
+                    spreadName = data.response ? data.response.trim() : null;
+                } else {
+                    spreadName = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content.trim() : null;
+                }
+                
+                console.log('Raw LLM response:', spreadName);
+                
+                // Clean up the response - extract just the spread name if there's extra text
+                if (spreadName) {
+                    const spreads = ['Celtic Cross', 'Seven Card', 'Five Card', 'Three Card', 'Single Card'];
+                    for (let i = 0; i < spreads.length; i++) {
+                        if (spreadName.indexOf(spreads[i]) !== -1) {
+                            spreadName = spreads[i];
+                            break;
+                        }
+                    }
+                }
+                
+                console.log('LLM suggested spread:', spreadName);
+                
+                // Validate and return spread
+                if (spreadName && SPREADS[spreadName]) {
+                    console.log('Using LLM-selected spread: ' + spreadName);
+                    console.log('Spread details:', SPREADS[spreadName].name, '(' + SPREADS[spreadName].size + ' cards) -', SPREADS[spreadName].description);
+                    return SPREADS[spreadName];
+                } else {
+                    console.log('Invalid spread name from LLM:', spreadName, '- using fallback');
+                    const fallback = chooseSpreadFallback(question);
+                    console.log('Fallback spread selected:', fallback.name, '(' + fallback.size + ' cards)');
+                    return fallback;
+                }
+                
+            } catch (error) {
+                console.log('Spread selection error, using fallback:', error.message);
+                const fallback = chooseSpreadFallback(question);
+                console.log('Fallback spread selected:', fallback.name, '(' + fallback.size + ' cards)');
+                return fallback;
+            }
+        }
+        
+        // Get card meaning
+        function getCardMeaning(cardName, reversed) {
+            if (CARD_MEANINGS[cardName]) {
+                return reversed ? CARD_MEANINGS[cardName].r : CARD_MEANINGS[cardName].u;
+            }
+            // For minor arcana, extract suit
+            const suitMatch = cardName.match(/of (\w+)$/);
+            if (suitMatch) {
+                const suit = suitMatch[1];
+                const meaning = SUIT_MEANINGS[suit] || 'General insight';
+                return reversed ? 'Blocked ' + meaning.toLowerCase() : meaning;
+            }
+            return reversed ? 'Challenges and obstacles' : 'Opportunities and growth';
+        }
+        
+        // API Settings
+        const $ = q => document.querySelector(q);
+        const API_KEY = 'tarot_api_settings';
+        const READINGS_KEY = 'tarot_readings';
+        
+        function loadAPISettings() {
+            try {
+                return JSON.parse(localStorage.getItem(API_KEY)) || {};
+            } catch {
+                return {};
+            }
+        }
+        
+        function saveAPISettings() {
+            const settings = {
+                provider: $('#provider').value,
+                model: $('#model').value,
+                apikey: $('#apikey').value
+            };
+            localStorage.setItem(API_KEY, JSON.stringify(settings));
+            alert('Settings saved!');
+        }
+        
+        function applyAPISettings() {
+            const settings = loadAPISettings();
+            if (settings.provider) $('#provider').value = settings.provider;
+            if (settings.model) $('#model').value = settings.model;
+            if (settings.apikey) $('#apikey').value = settings.apikey;
+        }
+        
+        // Streaming support utilities
+        function extractDelta(j) {
+            // OpenAI/OpenRouter SSE format
+            if (j && j.choices && j.choices.length) {
+                const c = j.choices[0];
+                return (c.delta && c.delta.content) ? c.delta.content : (c.text ? c.text : '');
+            }
+            // Ollama format
+            if (j && j.message && j.message.content) return j.message.content;
+            if (typeof j.response === 'string') return j.response;
+            return '';
+        }
+        
+        async function parseStream(readable, onChunk) {
+            const reader = readable.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+            let finalText = '';
+            
+            // Throttle updates to prevent excessive re-renders
+            let pendingText = '';
+            let lastUpdate = 0;
+            const THROTTLE_MS = 30;
+            
+            const throttledChunk = (text) => {
+                pendingText += text;
+                finalText += text;
+                
+                const now = Date.now();
+                if (now - lastUpdate >= THROTTLE_MS) {
+                    onChunk(pendingText);
+                    pendingText = '';
+                    lastUpdate = now;
+                }
+            };
+            
+            const flushPending = () => {
+                if (pendingText) {
+                    onChunk(pendingText);
+                    pendingText = '';
+                }
+            };
+            
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    
+                    const lines = buffer.split(/\r?\n/);
+                    buffer = lines.pop() || '';
+                    
+                    for (const raw of lines) {
+                        const line = raw.trim();
+                        if (!line) continue;
+                        
+                        if (line.startsWith('data:')) {
+                            // SSE format
+                            const data = line.slice(5).trim();
+                            if (data === '[DONE]') {
+                                flushPending();
+                                try { reader.cancel(); } catch {}
+                                return finalText;
+                            }
+                            try {
+                                const json = JSON.parse(data);
+                                const piece = extractDelta(json);
+                                if (piece) {
+                                    throttledChunk(piece);
+                                }
+                            } catch {}
+                        } else {
+                            // NDJSON format (Ollama)
+                            try {
+                                const json = JSON.parse(line);
+                                if (json.done) {
+                                    flushPending();
+                                    return finalText;
+                                }
+                                const piece = extractDelta(json);
+                                if (piece) {
+                                    throttledChunk(piece);
+                                }
+                            } catch {}
+                        }
+                    }
+                }
+                
+                // Process any remaining buffer
+                buffer += decoder.decode(); // Final flush
+                if (buffer.trim()) {
+                    try {
+                        const json = JSON.parse(buffer);
+                        const piece = extractDelta(json);
+                        if (piece) throttledChunk(piece);
+                    } catch {}
+                }
+                
+                flushPending();
+            } finally {
+                try { reader.releaseLock(); } catch {}
+            }
+            
+            return finalText;
+        }
+        
+        // LLM Integration with streaming
+        async function getLLMInterpretation(question, spread, cards, targetEl = null) {
+            const settings = loadAPISettings();
+            const provider = settings.provider || 'none';
+            
+            if (provider === 'none') {
+                const text = getOfflineInterpretation(question, spread, cards);
+                if (targetEl) targetEl.textContent = text;
+                return text;
+            }
+            
+            // Detect language first if there's a question
+            let detectedLanguage = 'English';
+            if (question && question.trim()) {
+                if (targetEl) {
+                    targetEl.innerHTML = '<span class="loading-text">🌐 Detecting language<span class="spinner"></span></span>';
+                }
+                detectedLanguage = await detectLanguageWithLLM(question);
+            }
+            
+            // Debug: Log the detected language for response
+            console.log('LLM will respond in language:', detectedLanguage);
+            
+            const prompt = buildPrompt(question, spread, cards, detectedLanguage);
+            const systemPrompt = detectedLanguage !== 'English' 
+                ? 'You are an experienced tarot reader. You MUST respond in ' + detectedLanguage + '. Do not use any other language.'
+                : 'You are an experienced tarot reader. Provide insightful, balanced interpretations.';
+            
+            const messages = [
+                {role: 'system', content: systemPrompt},
+                {role: 'user', content: prompt}
+            ];
+            
+            // Show loading state
+            if (targetEl) {
+                targetEl.innerHTML = '<span class="loading-text">✨ Interpreting the cards<span class="spinner"></span></span>';
+            }
+            
+            try {
+                let url, init;
+                
+                if (provider === 'openai') {
+                    url = 'https://api.openai.com/v1/chat/completions';
+                    init = {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + settings.apikey,
+                            'Accept': 'text/event-stream'
+                        },
+                        body: JSON.stringify({
+                            model: settings.model || 'gpt-4o-mini',
+                            messages,
+                            temperature: 0.7,
+                            stream: true
+                        })
+                    };
+                } else if (provider === 'openrouter') {
+                    url = 'https://openrouter.ai/api/v1/chat/completions';
+                    init = {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + settings.apikey,
+                            'HTTP-Referer': window.location.origin,
+                            'X-Title': 'Tarot Reading App',
+                            'Accept': 'text/event-stream'
+                        },
+                        body: JSON.stringify({
+                            model: settings.model || 'openai/gpt-4o-mini',
+                            messages,
+                            stream: true
+                        })
+                    };
+                } else if (provider === 'ollama') {
+                    url = 'http://localhost:11434/api/chat';
+                    init = {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            model: settings.model || 'llama3.2',
+                            messages,
+                            stream: true
+                        })
+                    };
+                }
+                
+                const response = await fetch(url, init);
+                
+                if (!response.ok) {
+                    throw new Error('API error: ' + response.status);
+                }
+                
+                // Check if streaming is supported
+                if (!response.body || response.headers.get('content-type')?.includes('application/json')) {
+                    // Fallback to non-streaming
+                    const data = await response.json();
+                    const text = data.choices?.[0]?.message?.content || 
+                                data.message?.content || 
+                                'Unable to get interpretation';
+                    if (targetEl) targetEl.textContent = text;
+                    return text;
+                }
+                
+                // Stream the response
+                if (targetEl) targetEl.textContent = '';
+                
+                const finalText = await parseStream(response.body, chunk => {
+                    if (targetEl) targetEl.textContent += chunk;
+                });
+                
+                return finalText || 'Unable to get interpretation';
+                
+            } catch (error) {
+                console.error('LLM Error:', error);
+                const fallback = getOfflineInterpretation(question, spread, cards) + 
+                                '\n\n(Note: Using offline interpretation due to API error)';
+                if (targetEl) targetEl.textContent = fallback;
+                return fallback;
+            }
+        }
+        
+        // LLM-based language detection
+        async function detectLanguageWithLLM(question) {
+            const settings = loadAPISettings();
+            
+            // If no API configured, default to English
+            if (!settings.provider || settings.provider === 'none') {
+                return 'English';
+            }
+            
+            // For Ollama, no API key needed; for others, check key
+            if (settings.provider !== 'ollama' && !settings.apikey) {
+                console.log('No API key for language detection, defaulting to English');
+                return 'English';
+            }
+            
+            const detectPrompt = 'Detect the language of this text and respond with ONLY the language name in English (e.g., "Japanese", "Chinese", "Spanish", "English"):\n\n"' + question + '"';
+            
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(function() { controller.abort(); }, 5000);
+                
+                const response = await fetch(
+                    settings.provider === 'openai' ? 'https://api.openai.com/v1/chat/completions' :
+                    settings.provider === 'openrouter' ? 'https://openrouter.ai/api/v1/chat/completions' :
+                    'http://localhost:11434/api/chat',
+                    {
+                        method: 'POST',
+                        signal: controller.signal,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(settings.apikey ? {'Authorization': `Bearer ${settings.apikey}`} : {})
+                        },
+                        body: JSON.stringify({
+                            model: settings.model || 'gpt-4o-mini',
+                            messages: [
+                                {role: 'system', content: 'You are a language detection system. Respond with only the language name.'},
+                                {role: 'user', content: detectPrompt}
+                            ],
+                            temperature: 0.1,
+                            stream: false
+                        })
+                    }
+                );
+                
+                clearTimeout(timeout);
+                const data = await response.json();
+                const detectedLang = (data.choices?.[0]?.message?.content || data.message?.content || 'English').trim();
+                
+                console.log('Detected language:', detectedLang);
+                return detectedLang;
+                
+            } catch (error) {
+                console.log('Language detection failed, defaulting to English:', error);
+                return 'English';
+            }
+        }
+        
+        function buildPrompt(question, spread, cards, detectedLanguage = 'English') {
+            let prompt = `Question: ${question || 'General reading'}\nSpread: ${spread.name}\n\nCards drawn:\n`;
+            
+            cards.forEach((card, i) => {
+                const position = spread.positions[i].name;
+                const reversed = card.reversed ? ' (Reversed)' : '';
+                const meaning = getCardMeaning(card.name, card.reversed);
+                prompt += `${position}: ${card.name}${reversed} - ${meaning}\n`;
+            });
+            
+            prompt += '\nPlease provide a cohesive interpretation that connects these cards and addresses the question. Keep it insightful but concise (200-300 words).';
+            
+            // Add language instruction based on detected language
+            if (detectedLanguage && detectedLanguage !== 'English') {
+                prompt += `\n\nIMPORTANT: The question was asked in ${detectedLanguage}. You MUST respond in ${detectedLanguage}. Do not respond in any other language.`;
+            }
+            
+            return prompt;
+        }
+        
+        function getOfflineInterpretation(question, spread, cards) {
+            let interpretation = `Your ${spread.name} Reading\n\n`;
+            interpretation += `Question: ${question || 'Open reading'}\n\n`;
+            
+            cards.forEach((card, i) => {
+                const position = spread.positions[i].name;
+                const reversed = card.reversed ? ' (Reversed)' : '';
+                const meaning = getCardMeaning(card.name, card.reversed);
+                interpretation += `${position}: ${card.name}${reversed}\n  ${meaning}\n\n`;
+            });
+            
+            interpretation += 'Summary: The cards suggest a period of introspection and growth. ';
+            interpretation += 'Pay attention to the patterns and themes that emerge from this reading.';
+            
+            return interpretation;
+        }
+        
+        // Dark mode
+        function pref() { 
+            return localStorage.theme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : '');
+        }
+        
+        function apply(t) {
+            document.body.classList.toggle('dark', t === 'dark');
+            document.getElementById('themeBtn').textContent = t === 'dark' ? '☀️' : '🌙';
+        }
+        
+        apply(pref());
+        document.getElementById('themeBtn').addEventListener('click', function() {
+            var t = document.body.classList.contains('dark') ? '' : 'dark';
+            localStorage.theme = t;
+            apply(t);
+        });
+        
+        // Settings toggle
+        const settingsBtn = document.getElementById('settingsBtn');
+        if (settingsBtn) {
+            settingsBtn.addEventListener('click', function() {
+                const settings = document.getElementById('settings');
+                settings.style.display = settings.style.display === 'none' ? 'block' : 'none';
+            });
+        }
+        
+        // Save readings
+        const load = () => JSON.parse(localStorage.getItem(READINGS_KEY) || '[]');
+        const store = a => localStorage.setItem(READINGS_KEY, JSON.stringify(a));
+        
+        const renderHistory = () => {
+            const h = $('#history');
+            const a = load();
+            h.innerHTML = a.slice().reverse().map(x => 
+                `<li>${new Date(x.time).toLocaleString()} — Q: "${x.question}" — ${x.spread} — Cards: ${x.cards}</li>`
+            ).join('');
+        };
+        
+        const saveBtn = document.getElementById('saveBtn');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', function() {
+                const question = document.getElementById('question').value;
+                const cards = window.currentReading && window.currentReading.cards ? 
+                    window.currentReading.cards.map(function(c) { return c.name + (c.reversed ? ' (R)' : ''); }).join(', ') : null;
+                const reading = document.getElementById('reading').textContent;
+                const spread = window.currentReading && window.currentReading.spread ? window.currentReading.spread.name : null;
+                
+                if (!cards) return alert('No reading to save');
+                
+                const a = load();
+                a.push({
+                    question: question || 'General reading',
+                    cards: cards,
+                    spread: spread,
+                    reading: reading,
+                    time: Date.now()
+                });
+                store(a);
+                renderHistory();
+                alert('Reading saved!');
+            });
+        }
+        
+        const historyBtn = document.getElementById('historyBtn');
+        if (historyBtn) {
+            historyBtn.addEventListener('click', function() {
+                const h = document.getElementById('history');
+                h.style.display = h.style.display === 'none' ? 'block' : 'none';
+                if (h.style.display === 'block') renderHistory();
+            });
+        }
+        
+        // Card interactions
+        document.addEventListener('click', function(e) {
+            const c = e.target.closest('.card');
+            if (c && !c.classList.contains('drawing')) {
+                c.classList.toggle('flipped');
+            }
+        });
+        
+        // Validate LLM pool response
+        function sanitizePoolResponse(raw) {
+            let parsed;
+            try {
+                parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+            } catch {
+                // Return safe defaults on parse error
+                return {
+                    pool_size: 35,
+                    include_cards: [],
+                    weights: { suits: {}, arcana: {} }
+                };
+            }
+            
+            // Validate and clamp values
+            const result = {
+                pool_size: 35,
+                include_cards: [],
+                weights: { suits: {}, arcana: {} }
+            };
+            
+            // Pool size between 30-40
+            if (typeof parsed.pool_size === 'number') {
+                result.pool_size = Math.min(40, Math.max(30, Math.round(parsed.pool_size)));
+            }
+            
+            // Validate card names exist
+            if (Array.isArray(parsed.include_cards)) {
+                const validCards = new Set(allCards.map(c => c.name));
+                result.include_cards = parsed.include_cards
+                    .filter(name => validCards.has(name))
+                    .slice(0, 8); // Max 8 must-include cards
+            }
+            
+            // Clamp weights to reasonable range [0.5, 2.5]
+            const clampWeight = (x) => {
+                const num = Number(x);
+                if (!isFinite(num)) return 1.0;
+                return Math.min(2.5, Math.max(0.5, num));
+            };
+            
+            if (parsed.weights?.suits) {
+                ['Cups', 'Pentacles', 'Swords', 'Wands'].forEach(suit => {
+                    if (parsed.weights.suits[suit] != null) {
+                        result.weights.suits[suit] = clampWeight(parsed.weights.suits[suit]);
+                    }
+                });
+            }
+            
+            if (parsed.weights?.arcana) {
+                ['Major', 'Minor'].forEach(type => {
+                    if (parsed.weights.arcana[type] != null) {
+                        result.weights.arcana[type] = clampWeight(parsed.weights.arcana[type]);
+                    }
+                });
+            }
+            
+            return result;
+        }
+        
+        // Card pool selection
+        async function getIntelligentCardPool(question) {
+            const settings = loadAPISettings();
+            
+            // If no API configured, use full deck
+            if (!settings.provider || settings.provider === 'none') {
+                return allCards;
+            }
+            
+            // For Ollama, no API key needed; for others, check key
+            if (settings.provider !== 'ollama' && !settings.apikey) {
+                console.log('No API key for non-Ollama provider, using full deck');
+                return allCards;
+            }
+            
+            const selectionPrompt = `You are a tarot deck curator. Based on the user's question, select 30-40 relevant cards from the 78-card Rider-Waite deck.
+
+Return ONLY this JSON structure, no other text:
+{
+  "pool_size": 35,
+  "include_cards": ["card names that must be included"],
+  "weights": {
+    "suits": {"Cups": 1.0, "Pentacles": 1.0, "Swords": 1.0, "Wands": 1.0},
+    "arcana": {"Major": 1.0, "Minor": 1.0}
+  }
+}
+
+Guidelines:
+- Love questions: boost Cups (1.8), include "The Lovers", "Two of Cups"
+- Career: boost Pentacles (1.7), include "Three of Pentacles", "The Emperor"
+- Spiritual: boost Major Arcana (1.8), include "The Hermit", "The High Priestess"
+- Conflict: boost Swords (1.6)
+- Creative: boost Wands (1.6)
+
+Question: ${question}`;
+
+            try {
+                // Quick API call for card selection with timeout
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout for slower models
+                
+                const response = await fetch(
+                    settings.provider === 'openai' ? 'https://api.openai.com/v1/chat/completions' :
+                    settings.provider === 'openrouter' ? 'https://openrouter.ai/api/v1/chat/completions' :
+                    'http://localhost:11434/api/chat',
+                    {
+                        method: 'POST',
+                        signal: controller.signal,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(settings.apikey ? {'Authorization': `Bearer ${settings.apikey}`} : {})
+                        },
+                        body: JSON.stringify({
+                            model: settings.model || 'gpt-4o-mini',
+                            messages: [
+                                {role: 'system', content: 'Return only JSON, no other text.'},
+                                {role: 'user', content: selectionPrompt}
+                            ],
+                            temperature: 0.3,
+                            stream: false
+                        })
+                    }
+                );
+                
+                clearTimeout(timeout);
+                const data = await response.json();
+                const content = data.choices?.[0]?.message?.content || data.message?.content || '{}';
+                
+                // Parse and validate selection
+                const selection = sanitizePoolResponse(content);
+                console.log('Card pool selection criteria:', JSON.stringify(selection, null, 2));
+                
+                // Build weighted pool
+                const pool = buildWeightedPool(allCards, selection);
+                console.log('Card pool created: ' + pool.length + ' cards selected from 78-card deck');
+                console.log('Pool includes:', pool.slice(0, 5).map(c => c.name).join(', '), '...');
+                return pool;
+                
+            } catch (error) {
+                console.log('Using full deck due to error:', error);
+                return allCards;
+            }
+        }
+        
+        function buildWeightedPool(cards, selection) {
+            const poolSize = selection.pool_size || 35;
+            const includeCards = selection.include_cards || [];
+            const weights = selection.weights || {};
+            
+            // Start with must-include cards
+            const pool = [];
+            const included = new Set();
+            
+            for (const cardName of includeCards) {
+                const card = cards.find(c => c.name === cardName);
+                if (card) {
+                    pool.push(card);
+                    included.add(card.name);
+                }
+            }
+            
+            // Calculate weight for each remaining card
+            const weighted = cards
+                .filter(c => !included.has(c.name))
+                .map(card => {
+                    let weight = 1.0;
+                    
+                    // Apply arcana weight
+                    const isMajor = card.id !== undefined && card.id <= 21;
+                    if (isMajor && weights.arcana?.Major) {
+                        weight *= weights.arcana.Major;
+                    } else if (!isMajor && weights.arcana?.Minor) {
+                        weight *= weights.arcana.Minor;
+                    }
+                    
+                    // Apply suit weight
+                    const suitMatch = card.name.match(/of (Wands|Cups|Swords|Pentacles)$/);
+                    if (suitMatch && weights.suits?.[suitMatch[1]]) {
+                        weight *= weights.suits[suitMatch[1]];
+                    }
+                    
+                    return {card, weight};
+                })
+                .sort((a, b) => b.weight - a.weight);
+            
+            // Take top weighted cards up to pool size
+            const remaining = poolSize - pool.length;
+            for (let i = 0; i < Math.min(remaining, weighted.length); i++) {
+                // Add some randomness to selection
+                const idx = Math.floor(Math.random() * Math.min(i + 3, weighted.length));
+                pool.push(weighted[idx].card);
+                weighted.splice(idx, 1);
+            }
+            
+            return pool;
+        }
+        
+        // Shuffle and draw
+        async function shuffleCards() {
+            const question = $('#question').value.trim();
+            const spreadEl = $('#spread');
+            const reading = $('#reading');
+            const btn = $('#shuffleBtn');
+            
+            btn.disabled = true;
+            spreadEl.innerHTML = '';
+            reading.innerHTML = '<span class="loading-text">🎴 Choosing spread layout<span class="spinner"></span></span>';
+            
+            // Get intelligent spread selection
+            console.log('\n=== Starting new reading ===');
+            console.log('Question:', question || '(no question provided)');
+            const spread = await getIntelligentSpread(question);
+            
+            // Update UI for spread type
+            const spreadClassMap = {
+                'Single Card': 'spread single-card',
+                'Three Card': 'spread three-card',
+                'Five Card': 'spread five-card',
+                'Seven Card': 'spread seven-card',
+                'Celtic Cross': 'spread celtic-cross'
+            };
+            spreadEl.className = spreadClassMap[spread.name] || 'spread three-card';
+            reading.innerHTML = '<span class="loading-text">📐 Using ' + spread.name + ' spread (' + spread.size + ' cards)<br>🎯 Selecting relevant cards<span class="spinner"></span></span>';
+            
+            // Get intelligent card pool based on question
+            console.log('Selecting card pool based on question context...');
+            const cardPool = await getIntelligentCardPool(question);
+            
+            // Show what cards were selected
+            const isCustomPool = cardPool.length < allCards.length;
+            if (isCustomPool) {
+                reading.innerHTML = '📊 Selected ' + cardPool.length + ' relevant cards from 78-card deck\n🔮 Shuffling...';
+            } else {
+                reading.innerHTML = '🔮 Shuffling full 78-card deck...';
+            }
+            
+            // Brief delay to show the selection message
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Crypto-secure shuffle of selected pool
+            const shuffled = cryptoShuffle(cardPool);
+            const drawn = [];
+            
+            for (let i = 0; i < spread.size; i++) {
+                const card = shuffled[i];
+                const reversed = cryptoRandomInt(2) === 1;
+                drawn.push({...card, reversed});
+            }
+            
+            // Store for saving
+            window.currentReading = {question, spread, cards: drawn};
+            
+            // Render cards
+            drawn.forEach((card, i) => {
+                const position = spread.positions[i];
+                const meaning = getCardMeaning(card.name, card.reversed);
+                const cardEl = document.createElement('div');
+                cardEl.className = `card drawing ${position.class || ''}`;
+                cardEl.dataset.name = card.name;
+                
+                cardEl.innerHTML = `
+                    <div class="card-tooltip">${card.name}${card.reversed ? ' (Reversed)' : ''}: ${meaning}</div>
+                    <div class="front">
+                        <img src="${cardBack}" alt="Card back">
+                    </div>
+                    <div class="back">
+                        <img src="${card.img}" alt="${card.name}" ${card.reversed ? 'style="transform:rotate(180deg)"' : ''}>
+                        <div class="card-info">
+                            <div class="card-label">${position.name}</div>
+                        </div>
+                        ${card.reversed ? '<div class="reversed-badge">REVERSED</div>' : ''}
+                    </div>
+                `;
+                
+                spreadEl.appendChild(cardEl);
+                
+                // Auto-flip after delay
+                setTimeout(() => {
+                    cardEl.classList.add('flipped');
+                    cardEl.classList.remove('drawing');
+                    playSound();
+                }, 500 + i * 200);
+            });
+            
+            // Get interpretation with streaming
+            setTimeout(async () => {
+                await getLLMInterpretation(question, spread, drawn, reading);
+                btn.disabled = false;
+            }, 2000 + spread.size * 200);
+        }
+        
+        // Moon phase
+        const getMoonPhase = () => {
+            const phases = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'];
+            const day = new Date().getDate();
+            return phases[Math.floor((day % 30) / 3.75)];
+        };
+        
+        $('#moon').textContent = getMoonPhase();
+        
+        // Sound effect
+        const playSound = () => {
+            const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGHz/DUiTYIG2O47OScTgwOUann7blmFgU7k9z1unEiBC13yO/eizEIHWq+8+OWT');
+            audio.volume = 0.3;
+            audio.play().catch(() => {});
+        };
+        
+        // Initialize
+        applyAPISettings();
+    </script>
+</body>
+</html>
