@@ -20,22 +20,35 @@
         .spread.seven-card{grid-template-columns:repeat(4,1fr)}
         .spread.celtic-cross{
             grid-template-areas:
-                ". above . ."
-                "past cross future outcome"
-                ". below . ."
-                "advice external hopes .";
-            grid-template-columns:repeat(4,1fr);
+                ". . above . self4"
+                "past1 past2 cross future1 self3"
+                ". . below . self2"
+                ". . . . self1";
+            grid-template-columns:repeat(5,1fr);
+            grid-template-rows:auto auto auto auto;
         }
         
         .card{
             position:relative;
             aspect-ratio:600/1000;
             transform-style:preserve-3d;
-            transition:transform .6s;
+            transition:transform .6s, z-index 0s;
             cursor:pointer;
             border-radius:8px;
             background:var(--card-bg);
+            z-index:1;
         }
+
+        /* Ensure later cards stack on top */
+        .card:nth-child(2){z-index:2}
+        .card:nth-child(3){z-index:3}
+        .card:nth-child(4){z-index:4}
+        .card:nth-child(5){z-index:5}
+        .card:nth-child(6){z-index:6}
+        .card:nth-child(7){z-index:7}
+        .card:nth-child(8){z-index:8}
+        .card:nth-child(9){z-index:9}
+        .card:nth-child(10){z-index:10}
         
         .card>.front,.card>.back{
             position:absolute;
@@ -72,7 +85,7 @@
         .card .back.reversed > img{transform:rotate(180deg)}
         
         .card.flipped{transform:rotateY(180deg)}
-        .card:hover{transform:translateY(-5px);box-shadow:0 8px 20px rgba(0,0,0,.3)}
+        .card:hover{transform:translateY(-5px);box-shadow:0 8px 20px rgba(0,0,0,.3);z-index:20 !important}
         .card.flipped:hover{transform:rotateY(180deg) translateY(-5px)}
         
         .card-info{
@@ -108,15 +121,20 @@
         }
         
         /* Celtic Cross positions */
-        .card.pos-cross{grid-area:cross}
+        .card.pos-cross{grid-area:cross;z-index:1}
+        .card.pos-cross.crossing{z-index:2;transform:rotate(90deg) scale(0.9)}
+        .card.pos-cross.crossing.flipped{transform:rotate(90deg) scale(0.9) rotateY(180deg)}
+        .card.pos-cross.crossing:hover{transform:rotate(90deg) scale(0.9) translateY(-5px);z-index:20 !important}
+        .card.pos-cross.crossing.flipped:hover{transform:rotate(90deg) scale(0.9) rotateY(180deg) translateY(-5px);z-index:20 !important}
         .card.pos-above{grid-area:above}
         .card.pos-below{grid-area:below}
-        .card.pos-past{grid-area:past}
-        .card.pos-future{grid-area:future}
-        .card.pos-advice{grid-area:advice}
-        .card.pos-external{grid-area:external}
-        .card.pos-hopes{grid-area:hopes}
-        .card.pos-outcome{grid-area:outcome}
+        .card.pos-past1{grid-area:past1}
+        .card.pos-past2{grid-area:past2}
+        .card.pos-future{grid-area:future1}
+        .card.pos-self1{grid-area:self1}
+        .card.pos-self2{grid-area:self2}
+        .card.pos-self3{grid-area:self3}
+        .card.pos-self4{grid-area:self4}
         
         #ui{position:fixed;top:10px;right:10px;display:flex;gap:8px;z-index:100}
         #ui button{
@@ -490,14 +508,14 @@
                 positions: [
                     {name: 'Present Situation', class: 'pos-cross'},
                     {name: 'Challenge/Cross', class: 'pos-cross'},
-                    {name: 'Distant Past', class: 'pos-past'},
-                    {name: 'Recent Past', class: 'pos-past'},
-                    {name: 'Possible Outcome', class: 'pos-future'},
-                    {name: 'Immediate Future', class: 'pos-future'},
-                    {name: 'Your Approach', class: 'pos-advice'},
-                    {name: 'External Influences', class: 'pos-external'},
-                    {name: 'Hopes & Fears', class: 'pos-hopes'},
-                    {name: 'Final Outcome', class: 'pos-outcome'}
+                    {name: 'Foundation', class: 'pos-below'},
+                    {name: 'Recent Past', class: 'pos-past2'},
+                    {name: 'Crown/Best Outcome', class: 'pos-above'},
+                    {name: 'Near Future', class: 'pos-future'},
+                    {name: 'Self/Attitude', class: 'pos-self1'},
+                    {name: 'Environment', class: 'pos-self2'},
+                    {name: 'Hopes & Fears', class: 'pos-self3'},
+                    {name: 'Final Outcome', class: 'pos-self4'}
                 ],
                 description: 'Most comprehensive for complex situations'
             }
@@ -551,7 +569,7 @@
                 const spreadPrompt = 'Select ONE tarot spread for: "' + question + '"\n\nMATCH FIRST RULE THAT APPLIES:\n\n1. Contains "past present future" or "timeline" → Three Card\n2. Starts with "will I" or "should I" or "is it" or contains "yes or no" → Single Card  \n3. Contains "daily" or "today" or "this week" → Single Card\n4. Contains "quit job" or "career change" or "move country" or "marriage" or "divorce" → Celtic Cross\n5. Contains "life purpose" or "year ahead" or "general reading" → Celtic Cross\n6. Contains "advice" or "what should I do" or "how can I" or "next steps" → Five Card\n7. Contains "hidden" or "influences" or "what am I not seeing" → Seven Card\n8. DEFAULT if no match → Three Card\n\nRespond with ONLY: Single Card OR Three Card OR Five Card OR Seven Card OR Celtic Cross';
                 
                 const controller = new AbortController();
-                const timeout = setTimeout(function() { controller.abort(); }, 8000); // 8s timeout
+                const timeout = setTimeout(function() { controller.abort(); }, 30000); // 8s timeout
                 
                 let endpoint, headers, body;
                 
@@ -1345,7 +1363,9 @@ Question: ${question}`;
                 const position = spread.positions[i];
                 const meaning = getCardMeaning(card.name, card.reversed);
                 const cardEl = document.createElement('div');
-                cardEl.className = `card drawing ${position.class || ''}`;
+                // Add 'crossing' class for the second card in Celtic Cross (the crossing card)
+                const isCrossing = spread.name === 'Celtic Cross' && i === 1;
+                cardEl.className = `card drawing ${position.class || ''} ${isCrossing ? 'crossing' : ''}`;
                 cardEl.dataset.name = card.name;
                 
                 cardEl.innerHTML = `
